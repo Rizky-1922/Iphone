@@ -1,0 +1,122 @@
+version: '3.1'
+networks:
+  zabbix-network:
+    driver: bridge
+services:
+  zabbix-mysql:
+    container_name: zabbix-mysql
+    image: mysql:latest
+    networks:
+      - zabbix-network
+    ports:
+      - '3306:3306'
+    volumes:
+      - './zabbix/mysql:/var/lib/data'
+    environment:
+      - MYSQL_ROOT_PASSWORD="SenhaAqui"
+      - MYSQL_DATABASE=zabbix
+      - MYSQL_USER=zabbix
+      - MYSQL_PASSWORD="SenhaAqui"
+  zabbix-server:
+    container_name: zabbix-server
+    image: zabbix/zabbix-server-mysql:alpine-latest
+    networks:
+      - zabbix-network
+    links:
+      - zabbix-mysql
+    restart: always
+    ports:
+      - '10051:10051'
+    volumes:
+      - './zabbix/alertscripts:/usr/lib/zabbix/alertscripts'
+    environment:
+      - DB_SERVER_HOST=zabbix-mysql
+      - MYSQL_DATABASE=zabbix
+      - MYSQL_USER=zabbix
+      - MYSQL_PASSWORD="SenhaAqui"
+    depends_on:
+      - zabbix-mysql
+  zabbix-frontend:
+    container_name: zabbix-frontend
+    image: zabbix/zabbix-web-apache-mysql:alpine-latest
+    networks:
+      - zabbix-network
+    links:
+      - zabbix-mysql
+    restart: always
+    ports:
+      - '8080:80'
+      - '10443:443'
+    environment:
+      - DB_SERVER_HOST=zabbix-mysql
+      - MYSQL_DATABASE=zabbix
+      - MYSQL_USER=zabbix
+      - MYSQL_PASSWORD="SenhaAqui"
+      - PHP_TZ=America/Sao_Paulo
+    depends_on:
+      - zabbix-mysql
+  grafana:
+    container_name: zabbix-grafana
+    image: grafana/grafana
+    networks:
+     - zabbix-network
+    links:
+     - zabbix-mysql
+     - zabbix-server
+    restart: always
+    ports:
+     - '3000:3000'
+    environment:
+     - GF_INSTALL_PLUGINS=alexanderzobnin-zabbix-app
+    depends_on:
+     - zabbix-mysql
+     - zabbix-server
+  zabbix-agent:
+    container_name: zabbix-agent
+    image: zabbix/zabbix-agent2:alpine-latest
+    user: root
+    networks:
+      - zabbix-network
+    links:
+      - zabbix-server
+    restart: always
+    privileged: true
+    volumes:
+      - /var/run:/var/run
+    ports:
+      - '10050:10050'
+    environment:
+      - ZBX_HOSTNAME=Zabbix server
+      - ZBX_SERVER_HOST=zabbix-server
+  zabbix-rdesktop:
+    image: lscr.io/linuxserver/rdesktop:alpine-icewm
+    container_name: zabbix-rdesktop
+    networks:
+      - zabbix-network
+    links:
+      - zabbix-server
+    security_opt:
+      - seccomp:unconfined #optional
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Sao_Paulo
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock #optional
+      - /dados/apps/rdesktop:/config #optional
+    ports:
+      - 3389:3389
+    devices:
+      - /dev/dri:/dev/dri #optional
+    shm_size: "1gb" #optional
+    restart: unless-stopped
+  phpmyadmin:
+    image: phpmyadmin
+    container_name: zabbix-phpmyadmin
+    networks:
+      - zabbix-network
+    restart: always
+    ports:
+      - 10081:80
+    environment:
+      - PMA_ARBITRARY=1
